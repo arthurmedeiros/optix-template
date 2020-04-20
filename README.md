@@ -55,8 +55,8 @@ Detailed steps below:
 
 - Clone the code
 ```
-    git clone https://gitlab.com/ingowald/optix7course.git
-    cd optix7course
+    git clone https://github.com/arthurmedeiros/optix-template.git
+    cd optix-template
 ```
 
 - create (and enter) a build directory
