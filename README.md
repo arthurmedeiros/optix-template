@@ -10,7 +10,7 @@ in Optix. Other than actual code, the only changes that you should probably do i
 things in both CMake files (in the root of the repository and in each project's folder).
 
 The project also includes GLFW (quick integration with OpenGL for easy interactivity) and Ingo Wald's
-GPU Development Toolkit (https://gitlab.com/ingowald/gdt). GDT contains some CMakes macros and scripts
+GPU Development Toolkit (https://gitlab.com/ingowald/gdt). GDT contains some CMake macros and scripts
 that allow for super easy integration of CUDA compiling inside your project, so it is necessary.
 
 The following compilation steps are taken straight out of the course's original repository.
