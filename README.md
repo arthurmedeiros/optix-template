@@ -3,8 +3,7 @@
 # About this Repository
 
 This code is heavily based on Ingo Wald's tutorial code for the
-SIGGRAPH 2019 Optix 7 Course
-(https://gitlab.com/ingowald/optix7course)
+SIGGRAPH 2019 Optix 7 Course (https://gitlab.com/ingowald/optix7course)
 
 This is supposed to be an easy repository to just clone and start straight to the important stuff
 in Optix. Other than actual code, the only changes that you should probably do is to change minimum
