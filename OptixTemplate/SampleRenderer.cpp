@@ -18,7 +18,6 @@
 // this include may only appear in a single source file:
 #include <optix_function_table_definition.h>
 
-/*! \namespace osc - Optix Siggraph Course */
 namespace osc {
 
   extern "C" char embedded_ptx_code[];
@@ -50,30 +49,32 @@ namespace osc {
 
 
   //! add aligned cube with front-lower-left corner and size
-  void TriangleMesh::addCube(const vec3f &center, const vec3f &size)
+  void Geometry::addCube(const vec3f &center, const vec3f &size, const vec3f& color)
   {
-    PING; 
+    PING;
     affine3f xfm;
     xfm.p = center - 0.5f*size;
     xfm.l.vx = vec3f(size.x,0.f,0.f);
     xfm.l.vy = vec3f(0.f,size.y,0.f);
     xfm.l.vz = vec3f(0.f,0.f,size.z);
-    addUnitCube(xfm);
+    addUnitCube(xfm, color);
   }
   
   /*! add a unit cube (subject to given xfm matrix) to the current
       triangleMesh */
-  void TriangleMesh::addUnitCube(const affine3f &xfm)
+  void Geometry::addUnitCube(const affine3f &xfm, const vec3f& color)
   {
-    int firstVertexID = (int)vertex.size();
-    vertex.push_back(xfmPoint(xfm,vec3f(0.f,0.f,0.f)));
-    vertex.push_back(xfmPoint(xfm,vec3f(1.f,0.f,0.f)));
-    vertex.push_back(xfmPoint(xfm,vec3f(0.f,1.f,0.f)));
-    vertex.push_back(xfmPoint(xfm,vec3f(1.f,1.f,0.f)));
-    vertex.push_back(xfmPoint(xfm,vec3f(0.f,0.f,1.f)));
-    vertex.push_back(xfmPoint(xfm,vec3f(1.f,0.f,1.f)));
-    vertex.push_back(xfmPoint(xfm,vec3f(0.f,1.f,1.f)));
-    vertex.push_back(xfmPoint(xfm,vec3f(1.f,1.f,1.f)));
+    TriangleMesh cube;
+    cube.color = color;
+    int firstVertexID = (int)cube.vertex.size();
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(0.f,0.f,0.f)));
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(1.f,0.f,0.f)));
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(0.f,1.f,0.f)));
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(1.f,1.f,0.f)));
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(0.f,0.f,1.f)));
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(1.f,0.f,1.f)));
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(0.f,1.f,1.f)));
+    cube.vertex.push_back(xfmPoint(xfm,vec3f(1.f,1.f,1.f)));
 
 
     int indices[] = {0,1,3, 2,3,0,
@@ -84,14 +85,19 @@ namespace osc {
                      4,0,2, 4,2,6
                      };
     for (int i=0;i<12;i++)
-      index.push_back(firstVertexID+vec3i(indices[3*i+0],
+     cube.index.push_back(firstVertexID+vec3i(indices[3*i+0],
                                           indices[3*i+1],
                                           indices[3*i+2]));
+
+    meshes.push_back(cube);
   }
     
-  void Sphere::addSphere(const float r, const vec3f col) {
-      radius = r;
-      color = col;
+  void Geometry::addSphere(const float r, const vec3f cen, const vec3f col) {
+      Sphere s;
+      s.radius = r;
+      s.color = col;
+      s.center = cen;
+      spheres.push_back(s);
   }
   
   /*! constructor - performs all setup, including initializing
@@ -278,12 +284,12 @@ namespace osc {
       // ==================================================================
       std::vector<OptixBuildInput> geometryInput(scene.spheres.size());
       std::vector<CUdeviceptr> d_vertices(scene.spheres.size());
-      std::vector<CUdeviceptr> d_indices(scene.spheres.size());
       std::vector<uint32_t> geometryInputFlags(scene.spheres.size());
 
       for (int sphereID = 0; sphereID < scene.spheres.size(); sphereID++) {
             Sphere& model = scene.spheres[sphereID];
-            OptixAabb   aabb = { -model.radius, -model.radius, -model.radius, model.radius, model.radius, model.radius };
+            vec3f lowerbound = model.center - vec3f(-model.radius, -model.radius, -model.radius);
+            OptixAabb   aabb = { model.center.x -model.radius,  model.center.y -model.radius,  model.center.z -model.radius,  model.center.x + model.radius,  model.center.y + model.radius,  model.center.z + model.radius };
             aabbBuffer[sphereID].alloc_and_upload(aabb);
 
             geometryInput[sphereID] = {};
@@ -322,7 +328,7 @@ namespace osc {
       (optixContext,
           &accelOptions,
           geometryInput.data(),
-          (int)scene.meshes.size(),  // num_build_inputs
+          (int)scene.spheres.size(),  // num_build_inputs
           &blasBufferSizes
       ));
 
@@ -351,7 +357,7 @@ namespace osc {
           /* stream */0,
           &accelOptions,
           geometryInput.data(),
-          (int)scene.meshes.size(),
+          (int)scene.spheres.size(),
           tempBuffer.d_pointer(),
           tempBuffer.sizeInBytes,
 
@@ -654,18 +660,17 @@ namespace osc {
   /*! does all setup for the hitgroup program(s) we are going to use */
   void SampleRenderer::createHitgroupPrograms()
   {
-    // for this simple example, we set up a single hit group
-    hitgroupPGs.resize(1);
+    hitgroupPGs.resize(2);
 
     OptixProgramGroupOptions pgOptions = {};
     OptixProgramGroupDesc pgDesc    = {};
     pgDesc.kind                     = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
     pgDesc.hitgroup.moduleCH            = module;
-    pgDesc.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+    pgDesc.hitgroup.entryFunctionNameCH = "__closesthit__radiance_mesh";
     pgDesc.hitgroup.moduleAH            = module;
     pgDesc.hitgroup.entryFunctionNameAH = "__anyhit__radiance";
     pgDesc.hitgroup.moduleIS            = module;
-    pgDesc.hitgroup.entryFunctionNameIS = "__intersection__is";
+    pgDesc.hitgroup.entryFunctionNameIS = "__intersection__mesh";
      
 
     char log[2048];
@@ -678,6 +683,21 @@ namespace osc {
                                         &hitgroupPGs[0]
                                         ));
     if (sizeof_log > 1) PRINT(log);
+
+
+    pgDesc.hitgroup.entryFunctionNameCH = "__closesthit__radiance_sphere";
+    pgDesc.hitgroup.entryFunctionNameIS = "__intersection__sphere";
+
+    char log2[2048];
+    size_t sizeof_log2 = sizeof(log2);
+    OPTIX_CHECK(optixProgramGroupCreate(optixContext,
+        &pgDesc,
+        1,
+        &pgOptions,
+        log2, &sizeof_log,
+        &hitgroupPGs[1]
+    ));
+    if (sizeof_log > 1) PRINT(log2);
   }
     
 
@@ -770,9 +790,10 @@ namespace osc {
     }
     for (int sphereID = 0; sphereID < numSpheres; sphereID++) {
         HitgroupRecord rec;
-        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[0], &rec));
+        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[1], &rec));
         rec.data.sphere_data.color = scene.spheres[sphereID].color;
         rec.data.sphere_data.radius = scene.spheres[sphereID].radius;
+        rec.data.sphere_data.center = scene.spheres[sphereID].center;
         hitgroupRecords.push_back(rec);
     }
     hitgroupRecordsBuffer.alloc_and_upload(hitgroupRecords);

@@ -21,7 +21,6 @@
 #include "LaunchParams.h"
 #include "gdt/math/AffineSpace.h"
 
-/*! \namespace osc - Optix Siggraph Course */
 namespace osc {
 
   struct Camera {
@@ -37,8 +36,6 @@ namespace osc {
       render */
 
   struct TriangleMesh {
-    void addUnitCube(const affine3f &xfm);
-    void addCube(const vec3f &center, const vec3f &size);
     
     std::vector<vec3f> vertex;
     std::vector<vec3i> index;
@@ -46,14 +43,16 @@ namespace osc {
   };
 
   struct Sphere {
-      void addSphere(const float r, const vec3f col);
-
       float radius;
       vec3f color;
-      vec3f center; // TODO
+      vec3f center;
   };
 
   struct Geometry {
+      void addUnitCube(const affine3f& xfm, const vec3f& color);
+      void addCube(const vec3f& center, const vec3f& size, const vec3f& color);
+      void addSphere(const float r, const vec3f cen, const vec3f col);
+
       std::vector<TriangleMesh> meshes;
       std::vector<Sphere> spheres;
   };

@@ -29,6 +29,8 @@ namespace osc {
 
   // for this simple example, we have a single ray type
   enum { SURFACE_RAY_TYPE=0, RAY_TYPE_COUNT };
+
+  __device__ vec3f lightDir;
   
   static __forceinline__ __device__
   void *unpackPointer( uint32_t i0, uint32_t i1 )
@@ -72,41 +74,52 @@ namespace osc {
   // one group of them to set up the SBT)
   //------------------------------------------------------------------------------
   
-  extern "C" __global__ void __closesthit__radiance()
+  extern "C" __global__ void __closesthit__radiance_mesh()
   {
-     const GeometrySBTData& geometrySbtData
-        = *(const GeometrySBTData*)optixGetSbtDataPointer();
+      const GeometrySBTData& geometrySbtData
+          = *(const GeometrySBTData*)optixGetSbtDataPointer();
 
-     vec3f normal, color;
-    if (optixGetHitKind() == 0) {
-        const SphereSBTData sbtData = geometrySbtData.sphere_data;
-        normal = *(vec3f*)getHitNormal<vec3f>();
-        color = sbtData.color;
-    }
-    else {
-        const TriangleMeshSBTData sbtData = geometrySbtData.triangle_data;
-        // compute normal:
-        const int   primID = optixGetPrimitiveIndex();
-        const vec3i index = sbtData.index[primID];
-        const vec3f& A = sbtData.vertex[index.x];
-        const vec3f& B = sbtData.vertex[index.y];
-        const vec3f& C = sbtData.vertex[index.z];
-        normal = normalize(cross(B - A, C - A));
-        color = sbtData.color;
-    }
-    const vec3f rayDir = normalize(vec3f(1.0f,-1.0f,1.0f));
-    float tempcos = dot(rayDir, normal);
-    tempcos = tempcos < 0 ? tempcos : 0;
-    const float cosDN  = 0.2f + .8f*fabsf(tempcos);
-    vec3f &prd = *(vec3f*)getPRD<vec3f>();
-    prd = cosDN * color;
+      vec3f normal, color;
+      const TriangleMeshSBTData sbtData = geometrySbtData.triangle_data;
+      // compute normal:
+      const int   primID = optixGetPrimitiveIndex();
+      const vec3i index = sbtData.index[primID];
+      const vec3f& A = sbtData.vertex[index.x];
+      const vec3f& B = sbtData.vertex[index.y];
+      const vec3f& C = sbtData.vertex[index.z];
+      normal = normalize(cross(C - A, B - A));
+      color = sbtData.color;
+      float tempcos = dot(lightDir, normal);
+      tempcos = tempcos < 0 ? tempcos : 0;
+      const float cosDN = 0.2f + .8f * fabsf(tempcos);
+      vec3f& prd = *(vec3f*)getPRD<vec3f>();
+      prd = cosDN * color;
+  }
+
+  extern "C" __global__ void __closesthit__radiance_sphere()
+  {
+      const GeometrySBTData& geometrySbtData
+          = *(const GeometrySBTData*)optixGetSbtDataPointer();
+
+      vec3f normal, color;
+      const SphereSBTData sbtData = geometrySbtData.sphere_data;
+      normal = *(vec3f*)getHitNormal<vec3f>();
+      color = sbtData.color;
+      float tempcos = dot(lightDir, normal);
+      tempcos = tempcos < 0 ? tempcos : 0;
+      const float cosDN = 0.2f + .8f * fabsf(tempcos);
+      vec3f& prd = *(vec3f*)getPRD<vec3f>();
+      prd = cosDN * color;
   }
   
   extern "C" __global__ void __anyhit__radiance()
   { /*! for this simple example, this will remain empty */ }
 
+  extern "C" __global__ void __intersection__mesh() {
 
-  extern "C" __global__ void __intersection__is()
+  }
+
+  extern "C" __global__ void __intersection__sphere()
   {
       const GeometrySBTData& geometrySbtData
           = *(const GeometrySBTData*)optixGetSbtDataPointer();
@@ -115,7 +128,7 @@ namespace osc {
       const vec3f orig = optixGetWorldRayOrigin();
       const vec3f dir = optixGetWorldRayDirection();
 
-      const vec3f center = { 0.f, 0.f, 0.f };
+      const vec3f center = sbtData.center;
       const float  radius = sbtData.radius;
       const vec3f O = orig - center;
       const float  l = 1 / length(dir);
@@ -197,6 +210,8 @@ namespace osc {
     vec3f rayDir = normalize(camera.direction
                              + (screen.x - 0.5f) * camera.horizontal
                              + (screen.y - 0.5f) * camera.vertical);
+
+    lightDir = vec3f(0.0f, -1.0f, 0.0f);
 
     optixTrace(optixLaunchParams.traversable,
                camera.position,

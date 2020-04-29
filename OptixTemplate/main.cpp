@@ -20,7 +20,6 @@
 #include "glfWindow/GLFWindow.h"
 #include <GL/gl.h>
 
-/*! \namespace osc - Optix Siggraph Course */
 namespace osc {
 
   struct SampleWindow : public GLFCameraWindow
@@ -116,16 +115,15 @@ namespace osc {
       Geometry scene;
       TriangleMesh plane;
       Sphere s;
-      plane.color = vec3f(0.3f, 0.3f, 0.3f);
-      plane.addCube(vec3f(0.f, -1.5f, 0.f), vec3f(10.f, .1f, 10.f));
-      s.addSphere(1.0f, vec3f(1.f, 1.f, 1.f));
-      scene.meshes.push_back(plane);
-      scene.spheres.push_back(s);
-      // 100x100 thin ground plane
-      //model[0].color = vec3f(0.f, 1.f, 0.f);
-      // model[0].addCube(vec3f(0.f, -1.5f, 0.f), vec3f(10.f, .1f, 10.f));
-      // a unit cube centered on top of that
-      //model[1].addCube(vec3f(0.f,0.f,0.f),vec3f(2.f,2.f,2.f));
+      scene.addCube(vec3f(0.f, -1.5f, 0.f),        // Position
+                    vec3f(10.f, .1f, 10.f),        // Size
+                    vec3f(1.0f, 1.0f, 1.0f));      // Color
+
+      scene.addSphere(0.3f,                        // Radius
+                      vec3f(0.0f, 2.0f, 0.0f),     // Center
+                      vec3f(1.f, 1.f, 1.f));       // Color
+      scene.addSphere(1.0f, vec3f(0.0f, 0.0f, 0.0f), vec3f(1.f, 0.5f, 0.5f));
+      scene.addCube(vec3f(4.0f, 0.0f, 0.0f), vec3f(1.5f, 1.5f, 1.5f), vec3f(0.2f, 0.9f, 0.2f));
 
       Camera camera = { /*from*/vec3f(-10.f,2.f,-12.f),
                         /* at */vec3f(0.f,0.f,0.f),
@@ -134,7 +132,7 @@ namespace osc {
       // camera knows how much to move for any given user interaction:
       const float worldScale = 10.f;
 
-      SampleWindow *window = new SampleWindow("Weekend Optix",
+      SampleWindow *window = new SampleWindow("Optix Template",
                                               scene,camera,worldScale);
       window->run();
       

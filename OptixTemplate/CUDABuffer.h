@@ -21,7 +21,6 @@
 #include <vector>
 #include <assert.h>
 
-/*! \namespace osc - Optix Siggraph Course */
 namespace osc {
 
   /*! simple wrapper for creating, and managing a device-side CUDA

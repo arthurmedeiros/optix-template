@@ -30,6 +30,7 @@ namespace osc {
   
   struct SphereSBTData {
       vec3f color;
+      vec3f center;
       float radius;
   };
 
