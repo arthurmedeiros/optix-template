@@ -22,6 +22,9 @@
 namespace osc {
   using namespace gdt;
 
+
+  enum { SURFACE_RAY_TYPE = 0, SHADOW_RAY_TYPE, RAY_TYPE_COUNT };
+
   struct TriangleMeshSBTData {
     vec3f  color;
     vec3f *vertex;

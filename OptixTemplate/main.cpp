@@ -120,7 +120,7 @@ namespace osc {
                     vec3f(1.0f, 1.0f, 1.0f));      // Color
 
       scene.addSphere(0.3f,                        // Radius
-                      vec3f(0.0f, 2.0f, 0.0f),     // Center
+                      vec3f(3.0f, 1.0f, 0.0f),     // Center
                       vec3f(1.f, 1.f, 1.f));       // Color
       scene.addSphere(1.0f, vec3f(0.0f, 0.0f, 0.0f), vec3f(1.f, 0.5f, 0.5f));
       scene.addCube(vec3f(4.0f, 0.0f, 0.0f), vec3f(1.5f, 1.5f, 1.5f), vec3f(0.2f, 0.9f, 0.2f));

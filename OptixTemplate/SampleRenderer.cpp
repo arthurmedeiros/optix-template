@@ -146,9 +146,6 @@ namespace osc {
     
     OptixTraversableHandle asHandle { 0 };
     
-    // ==================================================================
-    // triangle inputs
-    // ==================================================================
 	std::vector<OptixBuildInput> geometryInput(scene.meshes.size());
     std::vector<CUdeviceptr> d_vertices(scene.meshes.size());
 	std::vector<CUdeviceptr> d_indices(scene.meshes.size());
@@ -422,7 +419,7 @@ namespace osc {
       memcpy(sphereInstance.transform, transform, sizeof(float) * 12);
       sphereInstance.instanceId = 1;
       sphereInstance.visibilityMask = 255;
-      sphereInstance.sbtOffset = (uint32_t) scene.meshes.size();
+      sphereInstance.sbtOffset = (uint32_t) scene.meshes.size() * 2;
       sphereInstance.flags = OPTIX_INSTANCE_FLAG_NONE;
       sphereInstance.traversableHandle = spheres;
 
@@ -636,7 +633,7 @@ namespace osc {
   void SampleRenderer::createMissPrograms()
   {
     // we do a single ray gen program in this example:
-    missPGs.resize(1);
+    missPGs.resize(2);
       
     OptixProgramGroupOptions pgOptions = {};
     OptixProgramGroupDesc pgDesc    = {};
@@ -654,13 +651,24 @@ namespace osc {
                                         log,&sizeof_log,
                                         &missPGs[0]
                                         ));
+
+    pgDesc.miss.entryFunctionName = "__miss__empty";
+
+    OPTIX_CHECK(optixProgramGroupCreate(optixContext,
+        &pgDesc,
+        1,
+        &pgOptions,
+        log, &sizeof_log,
+        &missPGs[1]
+    ));
+
     if (sizeof_log > 1) PRINT(log);
   }
     
   /*! does all setup for the hitgroup program(s) we are going to use */
   void SampleRenderer::createHitgroupPrograms()
   {
-    hitgroupPGs.resize(2);
+    hitgroupPGs.resize(4);
 
     OptixProgramGroupOptions pgOptions = {};
     OptixProgramGroupDesc pgDesc    = {};
@@ -668,9 +676,9 @@ namespace osc {
     pgDesc.hitgroup.moduleCH            = module;
     pgDesc.hitgroup.entryFunctionNameCH = "__closesthit__radiance_mesh";
     pgDesc.hitgroup.moduleAH            = module;
-    pgDesc.hitgroup.entryFunctionNameAH = "__anyhit__radiance";
+    pgDesc.hitgroup.entryFunctionNameAH = "__anyhit__empty";
     pgDesc.hitgroup.moduleIS            = module;
-    pgDesc.hitgroup.entryFunctionNameIS = "__intersection__mesh";
+    pgDesc.hitgroup.entryFunctionNameIS = "__intersection__empty";
      
 
     char log[2048];
@@ -689,7 +697,6 @@ namespace osc {
     pgDesc.hitgroup.entryFunctionNameIS = "__intersection__sphere";
 
     char log2[2048];
-    size_t sizeof_log2 = sizeof(log2);
     OPTIX_CHECK(optixProgramGroupCreate(optixContext,
         &pgDesc,
         1,
@@ -698,6 +705,32 @@ namespace osc {
         &hitgroupPGs[1]
     ));
     if (sizeof_log > 1) PRINT(log2);
+
+    pgDesc.hitgroup.entryFunctionNameCH = "__closesthit__empty";
+    pgDesc.hitgroup.entryFunctionNameAH = "__anyhit__shadow";
+    pgDesc.hitgroup.entryFunctionNameIS = "__intersection__empty";
+
+    char log3[2048];
+    OPTIX_CHECK(optixProgramGroupCreate(optixContext,
+        &pgDesc,
+        1,
+        &pgOptions,
+        log3, &sizeof_log,
+        &hitgroupPGs[2]
+    ));
+    if (sizeof_log > 1) PRINT(log3);
+
+    pgDesc.hitgroup.entryFunctionNameIS = "__intersection__sphere";
+
+    char log4[2048];
+    OPTIX_CHECK(optixProgramGroupCreate(optixContext,
+        &pgDesc,
+        1,
+        &pgOptions,
+        log4, &sizeof_log,
+        &hitgroupPGs[3]
+    ));
+    if (sizeof_log > 1) PRINT(log4);
   }
     
 
@@ -780,21 +813,34 @@ namespace osc {
     int numSpheres = (int)scene.spheres.size();
     std::vector<HitgroupRecord> hitgroupRecords;
     for (int meshID = 0; meshID < numMeshes; meshID++) {
-        HitgroupRecord rec;
-        // all meshes use the same code, so all same hit group
-        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[0], &rec));
-        rec.data.triangle_data.color = scene.meshes[meshID].color;
-        rec.data.triangle_data.vertex = (vec3f*)vertexBuffer[meshID].d_pointer(); 
-        rec.data.triangle_data.index = (vec3i*)indexBuffer[meshID].d_pointer();
-        hitgroupRecords.push_back(rec);
+        HitgroupRecord rec_radiance;
+        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[0], &rec_radiance));
+        rec_radiance.data.triangle_data.color = scene.meshes[meshID].color;
+        rec_radiance.data.triangle_data.vertex = (vec3f*)vertexBuffer[meshID].d_pointer();
+        rec_radiance.data.triangle_data.index = (vec3i*)indexBuffer[meshID].d_pointer();
+        hitgroupRecords.push_back(rec_radiance);
+
+        HitgroupRecord rec_shadow;                                                     // TODO: empty record?
+        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[2], &rec_shadow));
+        rec_shadow.data.triangle_data.color = scene.meshes[meshID].color;
+        rec_shadow.data.triangle_data.vertex = (vec3f*)vertexBuffer[meshID].d_pointer();
+        rec_shadow.data.triangle_data.index = (vec3i*)indexBuffer[meshID].d_pointer();
+        hitgroupRecords.push_back(rec_shadow);
     }
     for (int sphereID = 0; sphereID < numSpheres; sphereID++) {
-        HitgroupRecord rec;
-        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[1], &rec));
-        rec.data.sphere_data.color = scene.spheres[sphereID].color;
-        rec.data.sphere_data.radius = scene.spheres[sphereID].radius;
-        rec.data.sphere_data.center = scene.spheres[sphereID].center;
-        hitgroupRecords.push_back(rec);
+        HitgroupRecord rec_radiance;
+        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[1], &rec_radiance));
+        rec_radiance.data.sphere_data.color = scene.spheres[sphereID].color;
+        rec_radiance.data.sphere_data.radius = scene.spheres[sphereID].radius;
+        rec_radiance.data.sphere_data.center = scene.spheres[sphereID].center;
+        hitgroupRecords.push_back(rec_radiance);
+
+        HitgroupRecord rec_shadow;                                               // TODO: empty record?
+        OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupPGs[3], &rec_shadow)); 
+        rec_shadow.data.sphere_data.color = scene.spheres[sphereID].color;
+        rec_shadow.data.sphere_data.radius = scene.spheres[sphereID].radius;
+        rec_shadow.data.sphere_data.center = scene.spheres[sphereID].center;
+        hitgroupRecords.push_back(rec_shadow);
     }
     hitgroupRecordsBuffer.alloc_and_upload(hitgroupRecords);
     sbt.hitgroupRecordBase          = hitgroupRecordsBuffer.d_pointer();
@@ -822,7 +868,7 @@ namespace osc {
                             /*! dimensions of the launch: */
                             launchParams.frame.size.x,
                             launchParams.frame.size.y,
-                            1
+                            2
                             ));
     // sync - make sure the frame is rendered before we download and
     // display (obviously, for a high-performance application you

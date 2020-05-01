@@ -27,10 +27,7 @@ namespace osc {
       optixLaunch) */
   extern "C" __constant__ LaunchParams optixLaunchParams;
 
-  // for this simple example, we have a single ray type
-  enum { SURFACE_RAY_TYPE=0, RAY_TYPE_COUNT };
-
-  __device__ vec3f lightDir;
+  __device__ vec3f lightPos;
   
   static __forceinline__ __device__
   void *unpackPointer( uint32_t i0, uint32_t i1 )
@@ -74,6 +71,11 @@ namespace osc {
   // one group of them to set up the SBT)
   //------------------------------------------------------------------------------
   
+  extern "C" __global__ void __closesthit__empty() {
+
+  }
+
+
   extern "C" __global__ void __closesthit__radiance_mesh()
   {
       const GeometrySBTData& geometrySbtData
@@ -89,11 +91,35 @@ namespace osc {
       const vec3f& C = sbtData.vertex[index.z];
       normal = normalize(cross(C - A, B - A));
       color = sbtData.color;
-      float tempcos = dot(lightDir, normal);
-      tempcos = tempcos < 0 ? tempcos : 0;
-      const float cosDN = 0.2f + .8f * fabsf(tempcos);
+      const float u = optixGetTriangleBarycentrics().x;
+      const float v = optixGetTriangleBarycentrics().y;
+
+      const vec3f pos = (1.f - u - v) * sbtData.vertex[index.x]
+          + u * sbtData.vertex[index.y]
+          + v * sbtData.vertex[index.z];
+      vec3f lightDir = lightPos-pos;
+      float tempcos = dot(normalize(lightDir), normal);
+      tempcos = tempcos > 0 ? tempcos : 0;
       vec3f& prd = *(vec3f*)getPRD<vec3f>();
-      prd = cosDN * color;
+
+      vec3f lightVisibility = vec3f(1.0f);
+
+      uint32_t u0, u1;
+      packPointer(&lightVisibility, u0, u1);
+
+      optixTrace(optixLaunchParams.traversable,
+          pos,
+          normalize(lightDir),
+          1e-3f,    // tmin
+          length(lightDir),  // tmax
+          0.0f,   // rayTime
+          OptixVisibilityMask(255),
+          OPTIX_RAY_FLAG_NONE,//OPTIX_RAY_FLAG_NONE,
+          SHADOW_RAY_TYPE,             // SBT offset
+          RAY_TYPE_COUNT,               // SBT stride
+          SHADOW_RAY_TYPE,             // missSBTIndex 
+          u0, u1);
+      prd = (0.2f + 0.8f * tempcos * lightVisibility) * color;
   }
 
   extern "C" __global__ void __closesthit__radiance_sphere()
@@ -105,18 +131,46 @@ namespace osc {
       const SphereSBTData sbtData = geometrySbtData.sphere_data;
       normal = *(vec3f*)getHitNormal<vec3f>();
       color = sbtData.color;
-      float tempcos = dot(lightDir, normal);
-      tempcos = tempcos < 0 ? tempcos : 0;
-      const float cosDN = 0.2f + .8f * fabsf(tempcos);
+      vec3f rayOrigin = optixGetWorldRayOrigin();
+      vec3f rayDirection = optixGetWorldRayDirection();
+      vec3f pos = sbtData.center + normal * sbtData.radius;
+      vec3f lightDir = lightPos - pos;
+      float tempcos = dot(normalize(lightDir), normal);
+      tempcos = tempcos > 0 ? tempcos : 0;
+      const float cosDN = 0.2f + .8f * tempcos;
       vec3f& prd = *(vec3f*)getPRD<vec3f>();
-      prd = cosDN * color;
+
+      vec3f lightVisibility = vec3f(1.0f);
+
+      uint32_t u0, u1;
+      packPointer(&lightVisibility, u0, u1);
+
+      optixTrace(optixLaunchParams.traversable,
+          pos,
+          normalize(lightDir),
+          1e-3f,    // tmin
+          length(lightDir),  // tmax
+          0.0f,   // rayTime
+          OptixVisibilityMask(255),
+          OPTIX_RAY_FLAG_NONE,//OPTIX_RAY_FLAG_NONE,
+          SHADOW_RAY_TYPE,             // SBT offset
+          RAY_TYPE_COUNT,               // SBT stride
+          SHADOW_RAY_TYPE,             // missSBTIndex 
+          u0, u1);
+
+      prd = (0.2f + 0.8f * cosDN * lightVisibility) * color;
   }
   
-  extern "C" __global__ void __anyhit__radiance()
+  extern "C" __global__ void __anyhit__empty()
   { /*! for this simple example, this will remain empty */ }
 
-  extern "C" __global__ void __intersection__mesh() {
+  extern "C" __global__ void __anyhit__shadow()
+  { 
+      *getPRD<vec3f>() = vec3f(0.f);
+      optixTerminateRay();
+  }
 
+  extern "C" __global__ void __intersection__empty() {
   }
 
   extern "C" __global__ void __intersection__sphere()
@@ -144,7 +198,7 @@ namespace osc {
           const float        root11 = 0.0f;
           const vec3f       shading_normal = (O + (root1 + root11) * D) / radius;
           vec3f& normal = *(vec3f*)getHitNormal<vec3f>();
-          normal = shading_normal;
+          normal = normalize(shading_normal);
 
           //TODO: passa a normal, burro
 
@@ -164,6 +218,10 @@ namespace osc {
   // need to have _some_ dummy function to set up a valid SBT
   // ------------------------------------------------------------------------------
   
+  extern "C" __global__ void __miss__empty()
+  {
+  }
+
   extern "C" __global__ void __miss__radiance()
   {
     vec3f &prd = *(vec3f*)getPRD<vec3f>();
@@ -171,7 +229,7 @@ namespace osc {
     const vec3f rayDir = optixGetWorldRayDirection();
 
     const vec3f color1 = vec3f(1.0f, 1.0f, 1.0f);
-    const vec3f color2 = vec3f(0.5f, 0.7f, 1.0f);
+    const vec3f color2 = vec3f(0.8f, 0.0f, 0.8f);
     float t = 0.5f*(rayDir.y + 1.0f); 
 
     // set to constant white as background color
@@ -211,7 +269,7 @@ namespace osc {
                              + (screen.x - 0.5f) * camera.horizontal
                              + (screen.y - 0.5f) * camera.vertical);
 
-    lightDir = vec3f(0.0f, -1.0f, 0.0f);
+    lightPos = vec3f(0.0f, 3.0f, 0.0f);
 
     optixTrace(optixLaunchParams.traversable,
                camera.position,
