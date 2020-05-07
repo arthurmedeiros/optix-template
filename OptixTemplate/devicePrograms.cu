@@ -200,8 +200,6 @@ namespace osc {
           vec3f& normal = *(vec3f*)getHitNormal<vec3f>();
           normal = normalize(shading_normal);
 
-          //TODO: passa a normal, burro
-
           optixReportIntersection(
               root1,      // t hit
               0,          // user hit kind
